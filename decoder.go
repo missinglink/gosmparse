@@ -39,9 +39,10 @@ func NewDecoder(r *os.File) *Decoder {
 // ParseBlob - parse a single blob
 func (d *Decoder) ParseBlob(o OSMReader, offset int64) error {
 
-	// ---
-	d.Index = &BlobIndex{}
-	d.Mutex = &sync.Mutex{}
+	if FeatureEnabled("INDEXING") {
+		d.Index = &BlobIndex{}
+		d.Mutex = &sync.Mutex{}
+	}
 
 	d.o = o
 	d.r.Seek(offset, 0)
@@ -128,8 +129,8 @@ func (d *Decoder) Parse(o OSMReader) error {
 func (d *Decoder) block() (*OSMPBF.BlobHeader, *OSMPBF.Blob, error) {
 
 	// store info
+	// vars required for FEAT:INDEXING
 	var startBytes = d.BytesRead
-
 	var byteCount int
 	var err error
 
@@ -140,7 +141,9 @@ func (d *Decoder) block() (*OSMPBF.BlobHeader, *OSMPBF.Blob, error) {
 	byteCount, err = io.ReadFull(d.r, headerSizeBuf)
 
 	// keep track of bytes read so far
-	atomic.AddUint64(&d.BytesRead, uint64(byteCount))
+	if FeatureEnabled("INDEXING") {
+		atomic.AddUint64(&d.BytesRead, uint64(byteCount))
+	}
 
 	// error checking
 	if err != nil {
@@ -155,7 +158,9 @@ func (d *Decoder) block() (*OSMPBF.BlobHeader, *OSMPBF.Blob, error) {
 	byteCount, err = io.ReadFull(d.r, headerBuf)
 
 	// keep track of bytes read so far
-	atomic.AddUint64(&d.BytesRead, uint64(byteCount))
+	if FeatureEnabled("INDEXING") {
+		atomic.AddUint64(&d.BytesRead, uint64(byteCount))
+	}
 
 	if err != nil {
 		return nil, nil, err
@@ -171,7 +176,9 @@ func (d *Decoder) block() (*OSMPBF.BlobHeader, *OSMPBF.Blob, error) {
 	byteCount, err = io.ReadFull(d.r, blobBuf)
 
 	// keep track of bytes read so far
-	atomic.AddUint64(&d.BytesRead, uint64(byteCount))
+	if FeatureEnabled("INDEXING") {
+		atomic.AddUint64(&d.BytesRead, uint64(byteCount))
+	}
 
 	if err != nil {
 		return nil, nil, err
@@ -182,18 +189,20 @@ func (d *Decoder) block() (*OSMPBF.BlobHeader, *OSMPBF.Blob, error) {
 	}
 
 	// store info
-	d.Mutex.Lock()
-	d.Index.Blobs = append(d.Index.Blobs, &BlobInfo{
-		Start: startBytes,
-		Size:  uint64(byteCount),
-	})
+	if FeatureEnabled("INDEXING") {
+		d.Mutex.Lock()
+		d.Index.Blobs = append(d.Index.Blobs, &BlobInfo{
+			Start: startBytes,
+			Size:  uint64(byteCount),
+		})
 
-	// hack to store the blob index key
-	var key = make([]byte, 8)
-	binary.LittleEndian.PutUint64(key, uint64(len(d.Index.Blobs)-1))
-	blob.XXX_unrecognized = key
+		// hack to store the blob index key
+		var key = make([]byte, 8)
+		binary.LittleEndian.PutUint64(key, uint64(len(d.Index.Blobs)-1))
+		blob.XXX_unrecognized = key
 
-	d.Mutex.Unlock()
+		d.Mutex.Unlock()
+	}
 
 	return blobHeader, blob, nil
 }
@@ -212,18 +221,20 @@ func (d *Decoder) readElements(blob *OSMPBF.Blob) error {
 		switch {
 		case pg.Dense != nil:
 
-			info.Type = "node"
-			info.Count = len(pg.Dense.Id)
+			if FeatureEnabled("INDEXING") {
+				info.Type = "node"
+				info.Count = len(pg.Dense.Id)
 
-			// find high and low id
-			var id int64
-			for index := range pg.Dense.Id {
-				id = pg.Dense.Id[index] + id
-				if 0 == info.High || id > info.High {
-					info.High = id
-				}
-				if 0 == info.Low || id < info.Low {
-					info.Low = id
+				// find high and low id
+				var id int64
+				for index := range pg.Dense.Id {
+					id = pg.Dense.Id[index] + id
+					if 0 == info.High || id > info.High {
+						info.High = id
+					}
+					if 0 == info.Low || id < info.Low {
+						info.Low = id
+					}
 				}
 			}
 
@@ -232,18 +243,20 @@ func (d *Decoder) readElements(blob *OSMPBF.Blob) error {
 			}
 		case len(pg.Ways) != 0:
 
-			info.Type = "way"
-			info.Count = len(pg.Ways)
+			if FeatureEnabled("INDEXING") {
+				info.Type = "way"
+				info.Count = len(pg.Ways)
 
-			// find high and low id
-			var id int64
-			for _, way := range pg.Ways {
-				id = way.GetId()
-				if 0 == info.High || id > info.High {
-					info.High = id
-				}
-				if 0 == info.Low || id < info.Low {
-					info.Low = id
+				// find high and low id
+				var id int64
+				for _, way := range pg.Ways {
+					id = way.GetId()
+					if 0 == info.High || id > info.High {
+						info.High = id
+					}
+					if 0 == info.Low || id < info.Low {
+						info.Low = id
+					}
 				}
 			}
 
@@ -252,18 +265,20 @@ func (d *Decoder) readElements(blob *OSMPBF.Blob) error {
 			}
 		case len(pg.Relations) != 0:
 
-			info.Type = "relation"
-			info.Count = len(pg.Relations)
+			if FeatureEnabled("INDEXING") {
+				info.Type = "relation"
+				info.Count = len(pg.Relations)
 
-			// find high and low id
-			var id int64
-			for _, way := range pg.Relations {
-				id = way.GetId()
-				if 0 == info.High || id > info.High {
-					info.High = id
-				}
-				if 0 == info.Low || id < info.Low {
-					info.Low = id
+				// find high and low id
+				var id int64
+				for _, way := range pg.Relations {
+					id = way.GetId()
+					if 0 == info.High || id > info.High {
+						info.High = id
+					}
+					if 0 == info.Low || id < info.Low {
+						info.Low = id
+					}
 				}
 			}
 
@@ -276,13 +291,15 @@ func (d *Decoder) readElements(blob *OSMPBF.Blob) error {
 			return fmt.Errorf("no supported data in primitive group")
 		}
 
-		d.Mutex.Lock()
+		if FeatureEnabled("INDEXING") {
+			d.Mutex.Lock()
 
-		// hack to retrieve the blob index key
-		var key = int(binary.LittleEndian.Uint64(blob.XXX_unrecognized))
+			// hack to retrieve the blob index key
+			var key = int(binary.LittleEndian.Uint64(blob.XXX_unrecognized))
 
-		d.Index.Blobs[key].Groups = append(d.Index.Blobs[key].Groups, info)
-		d.Mutex.Unlock()
+			d.Index.Blobs[key].Groups = append(d.Index.Blobs[key].Groups, info)
+			d.Mutex.Unlock()
+		}
 
 	}
 
