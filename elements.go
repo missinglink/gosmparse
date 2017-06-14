@@ -1,6 +1,6 @@
 package gosmparse
 
-import "github.com/thomersch/gosmparse/OSMPBF"
+import "github.com/missinglink/gosmparse/OSMPBF"
 
 // Node is an OSM data element with a position and tags (key/value pairs).
 type Node struct {

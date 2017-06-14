@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/thomersch/gosmparse/OSMPBF"
+	"github.com/missinglink/gosmparse/OSMPBF"
 
 	"github.com/aybabtme/iocontrol"
 	"github.com/dustin/go-humanize"

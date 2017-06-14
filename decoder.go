@@ -11,7 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/thomersch/gosmparse/OSMPBF"
+	"github.com/missinglink/gosmparse/OSMPBF"
 
 	"github.com/golang/protobuf/proto"
 )

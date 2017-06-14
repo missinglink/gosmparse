@@ -3,7 +3,7 @@ package gosmparse_test
 import (
 	"os"
 
-	"github.com/thomersch/gosmparse"
+	"github.com/missinglink/gosmparse"
 )
 
 // Implement the gosmparser.OSMReader interface here.
