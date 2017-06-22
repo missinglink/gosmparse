@@ -36,6 +36,11 @@ func NewDecoder(r *os.File) *Decoder {
 	}
 }
 
+// SeekToOffset move read pointer to byte offset
+func (d *Decoder) SeekToOffset(offset int64) {
+	d.r.Seek(offset, 0)
+}
+
 // ParseBlob - parse a single blob
 func (d *Decoder) ParseBlob(o OSMReader, offset int64) error {
 
@@ -45,7 +50,7 @@ func (d *Decoder) ParseBlob(o OSMReader, offset int64) error {
 	}
 
 	d.o = o
-	d.r.Seek(offset, 0)
+	d.SeekToOffset(offset)
 
 	_, blob, err := d.block()
 	if err != nil {
@@ -64,19 +69,22 @@ func (d *Decoder) ParseBlob(o OSMReader, offset int64) error {
 }
 
 // Parse starts the parsing process that will stream data into the given OSMReader.
-func (d *Decoder) Parse(o OSMReader) error {
+func (d *Decoder) Parse(o OSMReader, skipHeaderCheck bool) error {
 
 	d.Index = &BlobIndex{}
 	d.Mutex = &sync.Mutex{}
 
 	d.o = o
-	header, _, err := d.block()
-	if err != nil {
-		return err
-	}
-	// TODO: parser checks
-	if header.GetType() != "OSMHeader" {
-		return fmt.Errorf("Invalid header of first data block. Wanted: OSMHeader, have: %s", header.GetType())
+
+	if !skipHeaderCheck {
+		header, _, err := d.block()
+		if err != nil {
+			return err
+		}
+		// TODO: parser checks
+		if header.GetType() != "OSMHeader" {
+			return fmt.Errorf("Invalid header of first data block. Wanted: OSMHeader, have: %s", header.GetType())
+		}
 	}
 
 	errChan := make(chan error)
@@ -119,7 +127,7 @@ func (d *Decoder) Parse(o OSMReader) error {
 		finished <- true
 	}()
 	select {
-	case err = <-errChan:
+	case err := <-errChan:
 		return err
 	case <-finished:
 		return nil

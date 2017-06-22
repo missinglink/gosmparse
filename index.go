@@ -47,6 +47,18 @@ func (i *BlobIndex) BlobOffsets(memtype string, id int64) ([]int64, error) {
 	return offsets, errors.New("not found")
 }
 
+// FirstOffsetOfType - find the first offset of blob of desired type
+func (i *BlobIndex) FirstOffsetOfType(memtype string) (int64, error) {
+	for _, info := range i.Blobs {
+		for _, group := range info.Groups {
+			if group.Type == memtype {
+				return int64(info.Start), nil
+			}
+		}
+	}
+	return 0, errors.New("not found")
+}
+
 // WriteTo - write to destination
 func (i *BlobIndex) WriteTo(sink io.Writer) (int64, error) {
 	encoder := gob.NewEncoder(sink)
