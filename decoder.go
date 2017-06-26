@@ -6,7 +6,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -30,10 +32,22 @@ type Decoder struct {
 
 // NewDecoder returns a new decoder that reads from r.
 func NewDecoder(r *os.File) *Decoder {
-	return &Decoder{
+	var d = &Decoder{
 		r:         r,
 		QueueSize: 200,
 	}
+
+	// auto load index file if available
+	idxPath, _ := filepath.Abs(r.Name() + ".idx")
+	if _, err := os.Stat(idxPath); err == nil {
+		if nil == d.Index {
+			log.Println("autoload idx:", idxPath)
+			d.Index = &BlobIndex{}
+			d.Index.ReadFromFile(idxPath)
+		}
+	}
+
+	return d
 }
 
 // SeekToOffset move read pointer to byte offset
@@ -71,7 +85,9 @@ func (d *Decoder) ParseBlob(o OSMReader, offset int64) error {
 // Parse starts the parsing process that will stream data into the given OSMReader.
 func (d *Decoder) Parse(o OSMReader, skipHeaderCheck bool) error {
 
-	d.Index = &BlobIndex{}
+	if FeatureEnabled("INDEXING") || nil == d.Index {
+		d.Index = &BlobIndex{}
+	}
 	d.Mutex = &sync.Mutex{}
 
 	d.o = o
@@ -87,6 +103,9 @@ func (d *Decoder) Parse(o OSMReader, skipHeaderCheck bool) error {
 		}
 	}
 
+	// a waitgroup to keep track of which blobs have been processed
+	var wgBlobs sync.WaitGroup
+
 	errChan := make(chan error)
 	// feeder
 	blobs := make(chan *OSMPBF.Blob, d.QueueSize)
@@ -101,18 +120,32 @@ func (d *Decoder) Parse(o OSMReader, skipHeaderCheck bool) error {
 				errChan <- err
 				return
 			}
+
+			for _, offset := range d.Index.Breakpoints {
+				// wait at a breakpoint offset
+				if d.BytesRead == offset {
+					log.Println("Wait at offset", offset)
+					wgBlobs.Wait()
+				}
+			}
+
+			wgBlobs.Add(1)
 			blobs <- blob
 		}
 	}()
 
 	consumerCount := runtime.GOMAXPROCS(0)
+
+	// a waitgroup to keep track of which goroutines are still live
 	var wg sync.WaitGroup
+
 	for i := 0; i < consumerCount; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for blob := range blobs {
 				err := d.readElements(blob)
+				wgBlobs.Done()
 				if err != nil {
 					errChan <- err
 					return
@@ -149,9 +182,7 @@ func (d *Decoder) block() (*OSMPBF.BlobHeader, *OSMPBF.Blob, error) {
 	byteCount, err = io.ReadFull(d.r, headerSizeBuf)
 
 	// keep track of bytes read so far
-	if FeatureEnabled("INDEXING") {
-		atomic.AddUint64(&d.BytesRead, uint64(byteCount))
-	}
+	atomic.AddUint64(&d.BytesRead, uint64(byteCount))
 
 	// error checking
 	if err != nil {
@@ -166,9 +197,7 @@ func (d *Decoder) block() (*OSMPBF.BlobHeader, *OSMPBF.Blob, error) {
 	byteCount, err = io.ReadFull(d.r, headerBuf)
 
 	// keep track of bytes read so far
-	if FeatureEnabled("INDEXING") {
-		atomic.AddUint64(&d.BytesRead, uint64(byteCount))
-	}
+	atomic.AddUint64(&d.BytesRead, uint64(byteCount))
 
 	if err != nil {
 		return nil, nil, err
@@ -184,9 +213,7 @@ func (d *Decoder) block() (*OSMPBF.BlobHeader, *OSMPBF.Blob, error) {
 	byteCount, err = io.ReadFull(d.r, blobBuf)
 
 	// keep track of bytes read so far
-	if FeatureEnabled("INDEXING") {
-		atomic.AddUint64(&d.BytesRead, uint64(byteCount))
-	}
+	atomic.AddUint64(&d.BytesRead, uint64(byteCount))
 
 	if err != nil {
 		return nil, nil, err

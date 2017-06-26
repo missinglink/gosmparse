@@ -24,7 +24,8 @@ type BlobInfo struct {
 
 // BlobIndex - an index of all blocks in the file
 type BlobIndex struct {
-	Blobs []*BlobInfo
+	Blobs       []*BlobInfo
+	Breakpoints []uint64
 }
 
 // BlobOffsets - find the start offset of blob(s) containing desired element
@@ -70,7 +71,21 @@ func (i *BlobIndex) WriteTo(sink io.Writer) (int64, error) {
 func (i *BlobIndex) ReadFrom(tap io.Reader) (int64, error) {
 	decoder := gob.NewDecoder(tap)
 	err := decoder.Decode(i)
+	i.SetBreakpoints()
 	return 0, err
+}
+
+// SetBreakpoints - set the breakpoints for node/way/relation boundaries
+func (i *BlobIndex) SetBreakpoints() {
+	i.Breakpoints = i.Breakpoints[:0] // clear slice
+	wayOffset, _ := i.FirstOffsetOfType("way")
+	if wayOffset > 0 {
+		i.Breakpoints = append(i.Breakpoints, uint64(wayOffset))
+	}
+	relOffset, _ := i.FirstOffsetOfType("relation")
+	if relOffset > 0 {
+		i.Breakpoints = append(i.Breakpoints, uint64(relOffset))
+	}
 }
 
 // WriteToFile - write to disk
