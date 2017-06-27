@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -37,15 +36,8 @@ func NewDecoder(r *os.File) *Decoder {
 		QueueSize: 200,
 	}
 
-	// auto load index file if available
-	idxPath, _ := filepath.Abs(r.Name() + ".idx")
-	if _, err := os.Stat(idxPath); err == nil {
-		if nil == d.Index {
-			log.Println("autoload idx:", idxPath)
-			d.Index = &BlobIndex{}
-			d.Index.ReadFromFile(idxPath)
-		}
-	}
+	// load .idx file if available
+	d.AutoloadIndex()
 
 	return d
 }
@@ -163,6 +155,12 @@ func (d *Decoder) Parse(o OSMReader, skipHeaderCheck bool) error {
 	case err := <-errChan:
 		return err
 	case <-finished:
+
+		// save .idx file if applicable
+		if FeatureEnabled("INDEXING") {
+			d.AutoSaveIndex()
+		}
+
 		return nil
 	}
 }
