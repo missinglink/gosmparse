@@ -27,14 +27,14 @@ type Decoder struct {
 	Mutex     *sync.Mutex
 	BytesRead uint64
 	Index     *BlobIndex
-	Triggers  []*sync.WaitGroup
+	Triggers  []func(int, uint64)
 }
 
 // NewDecoder returns a new decoder that reads from r.
 func NewDecoder(r *os.File) *Decoder {
 	var d = &Decoder{
 		r:         r,
-		QueueSize: 200,
+		QueueSize: 64,
 	}
 
 	// load .idx file if available
@@ -124,12 +124,9 @@ func (d *Decoder) Parse(o OSMReader, skipHeaderCheck bool) error {
 					wgBlobs.Wait()
 
 					// if groups are provided in order to sync breakpoints, trigger them
-					if len(d.Triggers) > i {
-						trigger := d.Triggers[i]
-						if trigger != nil {
-							log.Println("Trigger", i)
-							trigger.Done()
-						}
+					for _, trigger := range d.Triggers {
+						log.Println("Trigger", i, offset)
+						trigger(i, offset)
 					}
 					break
 				}
