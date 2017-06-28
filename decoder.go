@@ -27,6 +27,7 @@ type Decoder struct {
 	Mutex     *sync.Mutex
 	BytesRead uint64
 	Index     *BlobIndex
+	Triggers  []*sync.WaitGroup
 }
 
 // NewDecoder returns a new decoder that reads from r.
@@ -113,16 +114,26 @@ func (d *Decoder) Parse(o OSMReader, skipHeaderCheck bool) error {
 				return
 			}
 
-			for _, offset := range d.Index.Breakpoints {
-				// wait at a breakpoint offset
+			wgBlobs.Add(1)
+			blobs <- blob
+
+			// wait at a breakpoint offset
+			for i, offset := range d.Index.Breakpoints {
 				if d.BytesRead == offset {
 					log.Println("Wait at offset", offset)
 					wgBlobs.Wait()
+
+					// if groups are provided in order to sync breakpoints, trigger them
+					if len(d.Triggers) > i {
+						trigger := d.Triggers[i]
+						if trigger != nil {
+							log.Println("Trigger", i)
+							trigger.Done()
+						}
+					}
+					break
 				}
 			}
-
-			wgBlobs.Add(1)
-			blobs <- blob
 		}
 	}()
 
